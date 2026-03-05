@@ -1,0 +1,579 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STEAM星際學院 - 領土佔領戰</title>
+    
+    <!-- PWA App 化設定 -->
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="星際學院">
+    <link rel="apple-touch-icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚀</text></svg>'>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            background-color: #0f172a; 
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(79, 70, 229, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(14, 165, 233, 0.15) 0%, transparent 50%);
+            color: #f8fafc;
+        }
+        
+        .glass-panel { 
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+
+        .view-transition { transition: opacity 0.4s ease, transform 0.4s ease; }
+        .hidden-view { opacity: 0; transform: scale(0.95) translateY(20px); pointer-events: none; position: absolute; width: 100%; z-index: -1; }
+        .active-view { opacity: 1; transform: scale(1) translateY(0); z-index: 10; position: relative; }
+
+        /* 領土星球動畫 */
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        .planet-float { animation: float 3s ease-in-out infinite; }
+        .planet-locked { filter: grayscale(100%) opacity(0.5); cursor: not-allowed; }
+        .planet-conquered { filter: drop-shadow(0 0 15px rgba(52, 211, 153, 0.8)); }
+    </style>
+</head>
+<body class="min-h-screen pb-12 overflow-x-hidden relative">
+
+    <!-- 頂部共用導覽列 -->
+    <header class="glass-panel border-b-2 border-indigo-500 py-3 px-4 md:px-8 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">🚀</div>
+                <div>
+                    <h1 class="text-xl font-black text-white tracking-wider">STEAM 星際學院</h1>
+                    <p class="text-indigo-300 text-xs tracking-widest" id="nav-role-text">請先登入系統</p>
+                </div>
+            </div>
+            <div id="nav-actions" class="hidden flex items-center gap-3">
+                <button onclick="logout()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors border border-slate-500">
+                    登出
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================= VIEW 0: 登入畫面 ================= -->
+    <main id="view-login" class="max-w-4xl mx-auto px-4 md:px-8 mt-12 active-view view-transition">
+        <div class="text-center mb-8">
+            <h2 class="text-3xl font-black mb-2">請選擇您的身分</h2>
+            <p class="text-slate-400 text-sm">提供專屬的學習介面與進度追蹤功能</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 學生登入 -->
+            <button onclick="login('kid')" class="glass-panel rounded-3xl p-8 hover:bg-indigo-900/50 transition-all border-2 border-transparent hover:border-indigo-500 group text-center flex flex-col items-center">
+                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🧑‍🚀</div>
+                <h3 class="text-2xl font-bold text-white mb-2">小探險家 (學生)</h3>
+                <p class="text-slate-400 text-sm">進入星系，查看任務與老師叮嚀，開始佔領領土！</p>
+            </button>
+            <!-- 家長登入 -->
+            <button onclick="login('parent')" class="glass-panel rounded-3xl p-8 hover:bg-emerald-900/50 transition-all border-2 border-transparent hover:border-emerald-500 group text-center flex flex-col items-center">
+                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">👨‍👩‍👦</div>
+                <h3 class="text-2xl font-bold text-white mb-2">星際指揮官 (家長)</h3>
+                <p class="text-slate-400 text-sm">追蹤學習成效、觀看回放，並查看老師的專業回饋。</p>
+            </button>
+        </div>
+    </main>
+
+    <!-- ================= VIEW 1: 學生儀表板 (小探險家) ================= -->
+    <main id="view-kid-dash" class="max-w-6xl mx-auto px-4 md:px-8 mt-8 hidden-view view-transition">
+        
+        <!-- 老師的小叮嚀 & 課前中後工具 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="col-span-2 glass-panel p-5 rounded-2xl border-l-4 border-l-yellow-400 relative overflow-hidden">
+                <span class="absolute top-2 right-3 text-2xl opacity-20">👩‍🏫</span>
+                <h3 class="text-sm font-bold text-yellow-400 mb-2">👩‍🏫 導師的小叮嚀：</h3>
+                <p class="text-slate-200 text-sm leading-relaxed" id="kid-teacher-note">
+                    Hi 小探險家！今天要攻佔的領土是『科學星』，出發前記得先點擊右側看「課前預習」影片喔！闖關時發音要大聲點，老師會在課中錄影裡看你的表現！加油！
+                </p>
+            </div>
+            
+            <div class="glass-panel p-5 rounded-2xl flex flex-col justify-center gap-3">
+                <p class="text-xs font-bold text-slate-400 text-center mb-1">星際學習工具</p>
+                <button class="bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500 text-blue-300 text-sm py-2 rounded-lg font-bold transition-colors">
+                    ▶️ 課前預習 (3 mins)
+                </button>
+                <div class="flex gap-2">
+                    <button class="flex-1 bg-red-600/20 border border-red-500 text-red-300 text-xs py-2 rounded-lg font-bold flex items-center justify-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 課中錄影中
+                    </button>
+                    <button onclick="alert('跳轉至課後回放區！')" class="flex-1 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500 text-purple-300 text-xs py-2 rounded-lg font-bold transition-colors">
+                        🔄 課後回放
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 領土佔領機制 (星系圖) -->
+        <div class="glass-panel rounded-3xl p-6 border border-slate-700">
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <h2 class="text-2xl font-black text-white">🌌 領土佔領任務 (微型推進)</h2>
+                    <p class="text-slate-400 text-sm mt-1">每日限時 25 分鐘，透過單字力量淨化星球！</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs text-slate-400">今日剩餘能量</span>
+                    <p class="text-emerald-400 font-mono text-xl font-bold">25:00</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-16 py-4" id="planet-map">
+                <!-- 星球 1 -->
+                <div onclick="enterLearningTask(0)" class="flex flex-col items-center cursor-pointer group" id="planet-0">
+                    <div class="text-7xl planet-float group-hover:scale-110 transition-transform mb-3">🌍</div>
+                    <span class="bg-slate-800 border border-slate-600 px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg">第1星區：地理</span>
+                    <span class="text-[10px] text-cyan-400 mt-1 status-text">點擊佔領</span>
+                </div>
+                <!-- 連接線 -->
+                <div class="hidden md:block w-16 h-1 bg-slate-700 rounded line-0"></div>
+                
+                <!-- 星球 2 -->
+                <div onclick="enterLearningTask(1)" class="flex flex-col items-center cursor-pointer group planet-locked" id="planet-1">
+                    <div class="text-7xl planet-float group-hover:scale-110 transition-transform mb-3" style="animation-delay: 0.5s;">🪐</div>
+                    <span class="bg-slate-800 border border-slate-600 px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg">第2星區：科學</span>
+                    <span class="text-[10px] text-slate-500 mt-1 status-text">未解鎖</span>
+                </div>
+                <div class="hidden md:block w-16 h-1 bg-slate-700 rounded line-1"></div>
+
+                <!-- 星球 3 (Boss) -->
+                <div onclick="enterLearningTask(2)" class="flex flex-col items-center cursor-pointer group planet-locked" id="planet-2">
+                    <div class="text-7xl planet-float group-hover:scale-110 transition-transform mb-3" style="animation-delay: 1s;">🏛️</div>
+                    <span class="bg-slate-800 border border-slate-600 px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg">第3星區：人文遺跡</span>
+                    <span class="text-[10px] text-slate-500 mt-1 status-text">未解鎖</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ================= VIEW 2: 家長儀表板 (星際指揮官) ================= -->
+    <main id="view-parent-dash" class="max-w-6xl mx-auto px-4 md:px-8 mt-8 hidden-view view-transition">
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- 數據總覽 -->
+            <div class="glass-panel p-6 rounded-2xl flex flex-col justify-center items-center text-center">
+                <p class="text-sm text-slate-400 font-bold mb-1">孩子已佔領領土</p>
+                <div class="text-5xl font-black text-emerald-400 mb-2" id="parent-territory-count">0/3</div>
+                <p class="text-xs text-slate-500">進度穩定推進中</p>
+            </div>
+
+            <!-- 教師回饋系統 -->
+            <div class="col-span-2 glass-panel p-6 rounded-2xl border-l-4 border-l-emerald-500 relative">
+                <h3 class="text-sm font-bold text-emerald-400 mb-2">💌 專屬教師回饋報告：</h3>
+                <p class="text-slate-200 text-sm leading-relaxed mb-4">
+                    指揮官(家長)您好，孩子最近在跨領域『地理與科學主題』的發音自信度提升很多！但在較長的單字上偶爾會卡頓。建議您可以多利用系統的「課後回放」功能，以隊友身分陪伴孩子重看一次錯誤的地方，效果會非常好！
+                </p>
+                <div class="flex gap-3">
+                    <button onclick="alert('開啟學習歷程影片檔')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors shadow-lg">
+                        📺 觀看孩子課中錄影
+                    </button>
+                    <button onclick="switchView('review')" class="bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
+                        📂 查看已學單字庫
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel rounded-3xl p-8 text-center border border-slate-700">
+            <h2 class="text-2xl font-bold mb-2">🤝 雙人合作闖關模式狀態</h2>
+            <p class="text-slate-400 text-sm mb-6">跳脫只能監看的框架，當孩子抵達「遺跡大門(Boss戰)」時，系統將呼叫您以隊友身分加入解謎！</p>
+            <div class="inline-block bg-slate-800 border border-slate-600 px-6 py-4 rounded-xl">
+                <span class="text-3xl mb-2 block" id="parent-coop-icon">📡</span>
+                <span class="text-sm font-bold text-slate-300" id="parent-coop-text">等待孩子發出合作信號...</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- ================= VIEW 3: 學習任務 (闖關) ================= -->
+    <main id="view-learning" class="max-w-6xl mx-auto px-4 md:px-8 hidden-view view-transition">
+        <div class="flex justify-between items-end mb-4">
+            <h2 class="text-xl font-bold text-white border-l-4 border-indigo-500 pl-3" id="learning-title">執行佔領任務</h2>
+            <button onclick="switchView('kid-dash')" class="bg-slate-700 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                撤退至儀表板
+            </button>
+        </div>
+
+        <div id="word-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"></div>
+        
+        <div id="exam-trigger-container" class="text-center mt-8 mb-12 hidden">
+            <button onclick="switchView('exam')" class="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xl font-black px-10 py-4 rounded-xl shadow-[0_0_30px_rgba(219,39,119,0.6)] animate-pulse transition-all border-2 border-pink-400">
+                🚨 發現遺跡大門！呼叫指揮官(家長)進行雙人解鎖！
+            </button>
+        </div>
+        <div id="complete-task-btn" class="text-center mt-8 mb-12 hidden">
+            <button onclick="completeCurrentTask()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xl font-black px-10 py-4 rounded-xl shadow-[0_0_30px_rgba(52,211,153,0.6)] transition-all">
+                ✨ 淨化完成！成功佔領本區領土！
+            </button>
+        </div>
+    </main>
+
+    <!-- ================= VIEW 4: 雙人合作測驗 (Boss) ================= -->
+    <main id="view-exam" class="max-w-4xl mx-auto px-4 md:px-8 hidden-view view-transition">
+        <div class="glass-panel rounded-3xl p-8 border-2 border-pink-500 relative overflow-hidden">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400 mb-2">🤝 雙人合作：遺跡解密</h2>
+                <p class="text-slate-300 text-sm">家長與孩子請就位！<br><span class="text-pink-400 font-bold">小探險家</span>負責「聲紋授權」，<br><span class="text-purple-400 font-bold">指揮官(家長)</span>負責「破解語意」，兩人皆成功才能開啟大門！</p>
+            </div>
+            <div id="quiz-container" class="bg-slate-800/80 border border-slate-600 rounded-2xl p-6 mb-6 shadow-inner"></div>
+        </div>
+    </main>
+
+    <!-- ================= VIEW 5: 總複習 ================= -->
+    <main id="view-review" class="max-w-4xl mx-auto px-4 md:px-8 hidden-view view-transition">
+        <div class="glass-panel rounded-3xl p-6 md:p-8 border-2 border-indigo-500">
+            <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                <h2 class="text-2xl font-black text-white">📂 已佔領領土單字庫</h2>
+                <button onclick="goBackFromReview()" class="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm">返回</button>
+            </div>
+            <div id="review-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar"></div>
+        </div>
+    </main>
+
+    <script>
+        // STEAM 跨領域單字庫
+        const wordDatabase = [
+            // Planet 0: 地理
+            { word: "location", pos: "n.", zh: "地點", root: "loc(地方)+ation", emoji: "📍", color: "cyan", theme: "地理", en_eg: "Find the hidden location on the map.", zh_eg: "在地圖上找到隱藏的地點。" },
+            { word: "compass", pos: "n.", zh: "指南針", root: "com(一起)+pass(步)", emoji: "🧭", color: "blue", theme: "地理", en_eg: "The compass always points North.", zh_eg: "指南針總是指向北方。" },
+            { word: "continent", pos: "n.", zh: "大陸/洲", root: "con(一起)+tin(握住)+ent", emoji: "🗺️", color: "emerald", theme: "地理", en_eg: "Asia is the largest continent.", zh_eg: "亞洲是最大的洲。" },
+            // Planet 1: 科學
+            { word: "gravity", pos: "n.", zh: "重力", root: "grav(重)+ity", emoji: "🍎", color: "purple", theme: "科學", en_eg: "Gravity keeps us on the ground.", zh_eg: "重力讓我們留在地面上。" },
+            { word: "energy", pos: "n.", zh: "能量", root: "en(在內)+erg(工作)+y", emoji: "🔋", color: "yellow", theme: "科學", en_eg: "The sun gives energy to plants.", zh_eg: "太陽給予植物能量。" },
+            { word: "element", pos: "n.", zh: "元素", root: "ele(基礎)+ment", emoji: "🧪", color: "pink", theme: "科學", en_eg: "Water is an important element for life.", zh_eg: "水是生命的重要元素。" },
+            // Planet 2: 歷史 (Boss)
+            { word: "museum", pos: "n.", zh: "博物館", root: "muse(女神)+um(地方)", emoji: "🏛️", color: "orange", theme: "藝術", en_eg: "We saw dinosaur bones in the museum.", zh_eg: "我們在博物館看到恐龍骨頭。" },
+            { word: "ancient", pos: "adj.", zh: "古代的", root: "ante(之前)+ient", emoji: "🏺", color: "amber", theme: "歷史", en_eg: "They found an ancient gold coin.", zh_eg: "他們找到了一枚古代金幣。" },
+            { word: "portrait", pos: "n.", zh: "肖像畫", root: "por(向前)+trait(畫)", emoji: "🖼️", color: "rose", theme: "藝術", en_eg: "She painted a beautiful portrait of her mother.", zh_eg: "她畫了一幅美麗的母親肖像畫。" }
+        ];
+
+        let currentUserRole = ''; // 'kid' or 'parent'
+        let conqueredTerritories = 0; // 0, 1, 2, 3
+        let currentLearningTask = 0;
+
+        function switchView(viewName) {
+            const views = ['login', 'kid-dash', 'parent-dash', 'learning', 'exam', 'review'];
+            views.forEach(v => {
+                document.getElementById(`view-${v}`).className = (v === viewName) ? 'max-w-6xl mx-auto px-4 md:px-8 active-view view-transition' : 'hidden-view';
+            });
+            if (viewName === 'kid-dash') updateKidDash();
+            if (viewName === 'parent-dash') updateParentDash();
+            if (viewName === 'review') renderReviewList();
+        }
+
+        function login(role) {
+            currentUserRole = role;
+            document.getElementById('nav-actions').classList.remove('hidden');
+            if(role === 'kid') {
+                document.getElementById('nav-role-text').innerText = '身分：小探險家 🧑‍🚀';
+                switchView('kid-dash');
+            } else {
+                document.getElementById('nav-role-text').innerText = '身分：星際指揮官 👨‍👩‍👦';
+                switchView('parent-dash');
+            }
+        }
+
+        function logout() {
+            currentUserRole = '';
+            document.getElementById('nav-actions').classList.add('hidden');
+            document.getElementById('nav-role-text').innerText = '請先登入系統';
+            switchView('login');
+        }
+
+        function goBackFromReview() {
+            if (currentUserRole === 'kid') switchView('kid-dash');
+            else switchView('parent-dash');
+        }
+
+        function updateKidDash() {
+            // 更新領土UI
+            for(let i=0; i<3; i++) {
+                const planet = document.getElementById(`planet-${i}`);
+                if (!planet) continue; // Safety check
+                
+                const line = document.querySelector(`.line-${i}`);
+                const status = planet.querySelector('.status-text');
+                
+                if (!status) continue; // Safety check
+
+                planet.className = 'flex flex-col items-center cursor-pointer group';
+                if (i < conqueredTerritories) {
+                    planet.classList.add('planet-conquered');
+                    status.innerText = '✅ 已佔領';
+                    status.className = 'text-[10px] text-emerald-400 mt-1 font-bold status-text';
+                    if(line) line.classList.replace('bg-slate-700', 'bg-emerald-500');
+                } else if (i === conqueredTerritories) {
+                    planet.classList.remove('planet-locked');
+                    status.innerText = '🎯 點擊前往佔領';
+                    status.className = 'text-[10px] text-cyan-400 mt-1 font-bold animate-pulse status-text';
+                } else {
+                    planet.classList.add('planet-locked');
+                    status.innerText = '🔒 未解鎖';
+                    status.className = 'text-[10px] text-slate-500 mt-1 font-bold status-text';
+                }
+            }
+            
+            // 更新老師小叮嚀
+            const note = document.getElementById('kid-teacher-note');
+            if (note) {
+                if(conqueredTerritories === 0) note.innerText = "Hi 小探險家！今天要攻佔『地理星』，記得先看課前預習影片喔！發音要大聲點，老師會在課中錄影裡看你的表現！";
+                else if (conqueredTerritories === 1) note.innerText = "做得好！第一區已經淨化！今天前往『科學星』，難度稍微提升，記得多聽幾次 AI 領航員的發音示範喔！";
+                else if (conqueredTerritories === 2) note.innerText = "最後一關了！前方是『人文遺跡大門』，這裡需要請指揮官(家長)一起合作解謎，快去邀請家長登入系統吧！";
+                else note.innerText = "太棒了！所有星區都已成功佔領，你的英文素養已經大幅提升！可以去航行日誌複習喔。";
+            }
+        }
+
+        function updateParentDash() {
+            document.getElementById('parent-territory-count').innerText = `${conqueredTerritories}/3`;
+            
+            if (conqueredTerritories === 2) {
+                document.getElementById('parent-coop-icon').innerText = '🚨';
+                document.getElementById('parent-coop-text').innerHTML = '<span class="text-pink-400">孩子正在呼叫您！遺跡大門雙人任務已觸發！</span><br><button onclick="enterLearningTask(2)" class="mt-3 bg-pink-600 hover:bg-pink-500 text-white px-4 py-2 rounded-lg text-sm transition-all shadow-lg">🚀 點擊加入雙人合作戰局</button>';
+            } else if (conqueredTerritories === 3) {
+                document.getElementById('parent-coop-icon').innerText = '🏆';
+                document.getElementById('parent-coop-text').innerText = '雙人合作任務已完美通關！';
+            } else {
+                document.getElementById('parent-coop-icon').innerText = '📡';
+                document.getElementById('parent-coop-text').innerText = '目前孩子獨自探索中，等待後續合作任務...';
+            }
+        }
+
+        function enterLearningTask(taskId) {
+            if (taskId > conqueredTerritories) { alert("此星區尚未解鎖！請先完成前面的任務。"); return; }
+            if (taskId < conqueredTerritories) { alert("此領土已成功佔領！您可以在航行日誌中複習。"); return; }
+            
+            currentLearningTask = taskId;
+            switchView('learning');
+            renderWords();
+            
+            const btnComplete = document.getElementById('complete-task-btn');
+            const btnExam = document.getElementById('exam-trigger-container');
+            
+            if (taskId === 2) { // 雙人Boss關
+                document.getElementById('learning-title').innerText = "【雙人任務】人文遺跡大門";
+                btnComplete.classList.add('hidden');
+                btnExam.classList.remove('hidden');
+            } else { // 單人任務
+                const themes = ['地理星', '科學星'];
+                document.getElementById('learning-title').innerText = `【佔領任務】${themes[taskId]}淨化`;
+                btnComplete.classList.remove('hidden');
+                btnExam.classList.add('hidden');
+            }
+        }
+
+        function completeCurrentTask() {
+            conqueredTerritories++;
+            alert("✨ 太棒了！您成功淨化並佔領了這塊領土！");
+            switchView('kid-dash');
+        }
+
+        // 發音功能 (AI 領航員)
+        function speakWord(text) {
+            if (!('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.pitch = 1.2;
+            utterance.rate = 0.85;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // 語音辨識
+        function checkPronunciationLearning(expectedText, buttonElement, color) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const originalHtml = buttonElement.innerHTML;
+            if (!SpeechRecognition) {
+                alert("⚠️ 麥克風未授權，啟動備用 AI 辨識通過！");
+                buttonElement.innerHTML = '✅ 聲紋授權成功';
+                buttonElement.classList.replace('bg-slate-800', 'bg-emerald-600');
+                setTimeout(() => { buttonElement.innerHTML = originalHtml; buttonElement.classList.replace('bg-emerald-600', 'bg-slate-800'); }, 3000);
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            buttonElement.innerHTML = '📡 接收聲紋中...';
+            recognition.start();
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.toLowerCase().replace(/[.,!?]/g, '').trim();
+                const targetText = expectedText.toLowerCase().replace(/[.,!?]/g, '').trim();
+                if (transcript === targetText || transcript.includes(targetText) || targetText.includes(transcript)) {
+                    buttonElement.innerHTML = '✅ 能量授權成功！';
+                    buttonElement.classList.replace('bg-slate-800', 'bg-emerald-600');
+                } else { buttonElement.innerHTML = '❌ 雜訊干擾，重試'; }
+                setTimeout(() => { buttonElement.innerHTML = originalHtml; buttonElement.classList.replace('bg-emerald-600', 'bg-slate-800'); }, 3000);
+            };
+        }
+
+        function renderWords() {
+            const container = document.getElementById('word-container');
+            container.innerHTML = '';
+            const todaysWords = wordDatabase.slice(currentLearningTask * 3, currentLearningTask * 3 + 3);
+
+            todaysWords.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = `glass-panel rounded-2xl p-1 transition-transform hover:-translate-y-2 border-t-4 border-${item.color}-500`;
+                const safeSentence = item.en_eg.replace(/'/g, "\\'");
+
+                card.innerHTML = `
+                    <div class="bg-slate-900 h-full rounded-xl p-5 flex flex-col relative">
+                        <span class="absolute top-3 right-3 text-[10px] bg-${item.color}-500/20 text-${item.color}-300 px-2 py-1 rounded border border-${item.color}-500/50">${item.theme}</span>
+                        <div class="flex justify-center text-6xl mb-4 py-4 bg-white/5 rounded-xl border border-white/10">${item.emoji}</div>
+                        <div class="mb-4">
+                            <h2 class="text-3xl font-black text-white">${item.word}</h2>
+                            <span class="text-xs text-slate-400 uppercase">${item.pos} ${item.zh}</span>
+                        </div>
+                        <button onclick="checkPronunciationLearning('${item.word}', this, '${item.color}')" class="w-full mb-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 py-2 rounded-lg font-bold text-sm">
+                            👨‍🚀 探險家開口唸
+                        </button>
+                        <div class="bg-slate-800/50 border border-slate-700 p-3 rounded-lg mb-2">
+                            <div class="flex justify-between items-start mb-1">
+                                <p class="text-[10px] text-slate-400 font-bold">📝 考察紀錄</p>
+                                <button onclick="speakWord('${safeSentence}')" class="text-slate-400 hover:text-white" title="領航員導讀">🔊</button>
+                            </div>
+                            <p class="text-sm font-bold text-slate-200 mb-1">${item.en_eg}</p>
+                            <p class="text-xs text-slate-500">${item.zh_eg}</p>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-auto pt-2 border-t border-slate-800">字根密碼：${item.root}</p>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // ================= 雙人合作測驗 (Boss) =================
+        let isP1Passed = false; let isP2Passed = false;
+        function initExam() {
+            examQuestions = wordDatabase.slice(0, 9).sort(() => 0.5 - Math.random()).slice(0, 3); // 隨機抽3題
+            currentExamIndex = 0;
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            isP1Passed = false; isP2Passed = false;
+            const container = document.getElementById('quiz-container');
+            const q = examQuestions[currentExamIndex];
+            
+            let options = wordDatabase.filter(w => w.word !== q.word).sort(() => 0.5 - Math.random()).slice(0, 3);
+            options.push(q); options = options.sort(() => 0.5 - Math.random()); 
+
+            let optionsHtml = options.map(opt => `
+                <button onclick="checkP2Meaning('${opt.word}', '${q.word}', this)" class="w-full text-left bg-slate-700 hover:bg-slate-600 border border-slate-500 p-3 rounded-lg text-sm font-bold text-slate-200 transition-colors">
+                    ${opt.zh}
+                </button>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="text-center mb-6">
+                    <p class="text-pink-400 text-xs font-bold tracking-widest mb-1">遺跡鎖 ${currentExamIndex + 1} / 3</p>
+                    <h3 class="text-5xl font-black text-white tracking-wider mb-6">${q.word}</h3>
+                    <div class="flex flex-col md:flex-row justify-center gap-6 mb-4">
+                        <div id="task-p1" class="bg-slate-800 p-5 rounded-xl border-2 border-pink-500/50 flex-1 relative">
+                            <span class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-pink-600 text-white text-[10px] px-2 py-1 rounded-full font-bold">P1 孩子任務</span>
+                            <button id="exam-mic-btn" onclick="checkP1Pronunciation('${q.word}')" class="mt-4 w-full bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 rounded-lg">🎙️ 聲紋授權</button>
+                        </div>
+                        <div id="task-p2" class="bg-slate-800 p-5 rounded-xl border-2 border-purple-500/50 flex-1 relative">
+                            <span class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-[10px] px-2 py-1 rounded-full font-bold">P2 家長任務</span>
+                            <div class="grid grid-cols-1 gap-2 mt-4">${optionsHtml}</div>
+                        </div>
+                    </div>
+                    <p id="coop-status" class="text-sm text-slate-400 mt-2">等待雙方完成任務...</p>
+                </div>
+            `;
+        }
+
+        function checkP1Pronunciation(expectedText) {
+            if (isP1Passed) return;
+            const btn = document.getElementById('exam-mic-btn');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                isP1Passed = true; btn.innerHTML = '✅ P1 完成'; btn.className = 'mt-4 w-full bg-emerald-500 text-white font-bold py-2 rounded-lg';
+                document.getElementById('task-p1').classList.replace('border-pink-500/50', 'border-emerald-500'); checkCoopStatus(); return;
+            }
+            const recognition = new SpeechRecognition(); recognition.lang = 'en-US'; btn.innerHTML = '聆聽中...'; recognition.start();
+            recognition.onresult = (event) => {
+                const t = event.results[0][0].transcript.toLowerCase().replace(/[.,!?]/g, '').trim();
+                const target = expectedText.toLowerCase().replace(/[.,!?]/g, '').trim();
+                if (t === target || t.includes(target) || target.includes(t)) {
+                    isP1Passed = true; btn.innerHTML = '✅ P1 完成'; btn.className = 'mt-4 w-full bg-emerald-500 text-white font-bold py-2 rounded-lg';
+                    document.getElementById('task-p1').classList.replace('border-pink-500/50', 'border-emerald-500'); checkCoopStatus();
+                } else { btn.innerHTML = '❌ 錯誤'; }
+            };
+        }
+
+        function checkP2Meaning(selectedWord, correctWord, btnElement) {
+            if (isP2Passed) return;
+            if (selectedWord === correctWord) {
+                isP2Passed = true; btnElement.classList.replace('bg-slate-700', 'bg-emerald-500');
+                document.getElementById('task-p2').classList.replace('border-purple-500/50', 'border-emerald-500'); checkCoopStatus();
+            } else { alert("❌ 家長情報錯誤！重新挑戰！"); switchView('learning'); }
+        }
+
+        function checkCoopStatus() {
+            const s = document.getElementById('coop-status');
+            if (isP1Passed && !isP2Passed) s.innerText = "P1 已就緒，等待家長...";
+            if (!isP1Passed && isP2Passed) s.innerText = "P2 已就緒，等待孩子...";
+            if (isP1Passed && isP2Passed) {
+                s.innerText = "✨ 雙人同步成功！"; s.className = "text-sm text-emerald-400 font-bold mt-2 animate-bounce";
+                setTimeout(() => {
+                    currentExamIndex++;
+                    if (currentExamIndex >= 3) examVictory(); else loadQuestion();
+                }, 1000); 
+            }
+        }
+
+        function examVictory() {
+            document.getElementById('quiz-container').innerHTML = `
+                <div class="text-center py-8">
+                    <div class="text-7xl mb-4">🚪✨</div>
+                    <h3 class="text-3xl font-black text-emerald-400 mb-2">遺跡大門已開啟！</h3>
+                    <p class="text-slate-300 mb-6">家長與孩子配合天衣無縫！成功佔領所有領土！</p>
+                    <button onclick="conqueredTerritories = 3; switchView(currentUserRole === 'kid' ? 'kid-dash' : 'parent-dash');" class="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold">完成任務</button>
+                </div>`;
+        }
+
+        // ================= VIEW 5: 總複習 =================
+        function renderReviewList() {
+            const container = document.getElementById('review-list-container');
+            container.innerHTML = '';
+            const unlockedWords = wordDatabase.slice(0, conqueredTerritories * 3);
+            if(conqueredTerritories === 3) unlockedWords.push(...wordDatabase.slice(6,9)); // Boss也算
+            
+            document.getElementById('review-count').innerText = unlockedWords.length;
+
+            unlockedWords.forEach((item) => {
+                container.innerHTML += `
+                    <div class="glass-panel p-4 rounded-xl flex justify-between items-center border-l-4 border-l-${item.color}-500 mb-2">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="text-xl font-black text-white">${item.word}</h4>
+                                <span class="text-[10px] bg-slate-800 text-slate-400 px-2 rounded">${item.theme}</span>
+                            </div>
+                            <span class="text-sm font-bold text-slate-300">${item.zh}</span>
+                        </div>
+                        <button onclick="speakWord('${item.word}')" class="text-2xl text-slate-400 hover:text-white">🔊</button>
+                    </div>`;
+            });
+        }
+
+        let audioUnlocked = false;
+        function unlockAudio() {
+            if (!audioUnlocked && 'speechSynthesis' in window) {
+                let msg = new SpeechSynthesisUtterance(''); window.speechSynthesis.speak(msg); audioUnlocked = true;
+            }
+        }
+        window.addEventListener('load', () => {
+            switchView('login');
+            document.body.addEventListener('touchstart', unlockAudio, { once: true });
+            document.body.addEventListener('click', unlockAudio, { once: true });
+        });
+    </script>
+</body>
+</html>
